@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Negotiation Chat</title>
+    <style>
+        body { font-family: Arial; background:#f5f5f5; }
+        #chat { width: 400px; margin: 30px auto; background: white; padding: 20px; border-radius: 8px; }
+        #messages { height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; }
+        input { width: 100%; padding: 8px; margin-top: 5px; }
+        button { width: 100%; padding: 10px; margin-top: 10px; }
+        .ai { color: green; }
+        .user { color: blue; }
+    </style>
+</head>
+<body>
+
+<div id="chat">
+
+    <div id="onboarding">
+        <h3>Start Negotiation</h3>
+        <input id="name" placeholder="Your name" />
+        <input id="phone" placeholder="Phone number" />
+        <input id="product" placeholder="Product UUID" />
+        <button onclick="startSession()">Start</button>
+    </div>
+
+    <div id="chatbox" style="display:none;">
+        <h3>Negotiation Chat</h3>
+        <div id="messages"></div>
+        <input id="messageInput" placeholder="Type your message..." />
+        <button onclick="sendMessage()">Send</button>
+    </div>
+
+</div>
+
+<script>
+let sessionId = null;
+
+async function startSession() {
+    const name = document.getElementById("name").value;
+    const phone = document.getElementById("phone").value;
+    const productId = document.getElementById("product").value;
+
+    const res = await fetch("http://localhost:8000/web/session/start", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            name: name,
+            phone_number: phone,
+            product_id: productId,
+            language: "en"
+        })
+    });
+
+    const data = await res.json();
+    sessionId = data.session_id;
+    localStorage.setItem("session_id", sessionId);
+
+    document.getElementById("onboarding").style.display = "none";
+    document.getElementById("chatbox").style.display = "block";
+
+    loadMessages();
+}
+
+async function sendMessage() {
+    const msg = document.getElementById("messageInput").value;
+
+    await fetch("http://localhost:8000/messages/", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            session_id: sessionId,
+            sender: "customer",
+            message: msg
+        })
+    });
+
+    document.getElementById("messageInput").value = "";
+    loadMessages();
+}
+
+async function loadMessages() {
+    const res = await fetch(`http://localhost:8000/messages/${sessionId}`);
+    const data = await res.json();
+
+    const box = document.getElementById("messages");
+    box.innerHTML = "";
+
+    data.forEach(m => {
+        const div = document.createElement("div");
+        div.className = m.sender === "ai" ? "ai" : "user";
+        div.innerText = m.sender + ": " + m.message;
+        box.appendChild(div);
+    });
+
+    box.scrollTop = box.scrollHeight;
+}
+</script>
+
+</body>
+</html>
