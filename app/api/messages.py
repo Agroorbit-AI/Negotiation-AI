@@ -17,9 +17,6 @@ router = APIRouter(
     tags=["Messages"]
 )
 
-# -------------------------------
-# DETERMINISTIC OFFER EXTRACTOR
-# -------------------------------
 def extract_offer(text: str):
     numbers = re.findall(r"\d+(?:\.\d+)?", text)
     if not numbers:
@@ -30,7 +27,6 @@ def extract_offer(text: str):
 @router.post("/", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
 def create_message(payload: MessageCreate, db: Session = Depends(get_db)):
 
-    # 1️⃣ Load negotiation session
     session = (
         db.query(NegotiationSession)
         .filter(NegotiationSession.id == payload.session_id)
@@ -49,27 +45,23 @@ def create_message(payload: MessageCreate, db: Session = Depends(get_db)):
             detail="Negotiation session is already closed"
         )
 
-    # 2️⃣ Save CUSTOMER message
+    # Save CUSTOMER message
     customer_message = ConversationMessage(
         negotiation_id=session.id,
         sender=payload.sender.lower(),
         message=payload.message
     )
-
     db.add(customer_message)
     db.commit()
     db.refresh(customer_message)
 
-    # 3️⃣ Trigger AI only for customer messages
+    # Trigger AI only for customer
     if payload.sender.lower() == "customer":
 
         product = session.product
-
         customer_offer = extract_offer(payload.message)
 
-        # -------------------------------
-        # NO OFFER → ASK FOR PRICE
-        # -------------------------------
+        # No offer
         if customer_offer is None:
             ai_text = "Thanks for your interest. Could you please share your expected price so I can check what’s possible?"
 
@@ -80,18 +72,17 @@ def create_message(payload: MessageCreate, db: Session = Depends(get_db)):
             )
             db.add(ai_message)
             db.commit()
+            db.refresh(ai_message)
 
+            # ✅ RETURN AI MESSAGE
             return MessageResponse(
-                id=customer_message.id,
-                session_id=customer_message.negotiation_id,
-                sender=customer_message.sender,
-                message=customer_message.message,
-                created_at=customer_message.created_at
+                id=ai_message.id,
+                session_id=ai_message.negotiation_id,
+                sender=ai_message.sender,
+                message=ai_message.message,
+                created_at=ai_message.created_at
             )
 
-        # -------------------------------
-        # LOAD HISTORY
-        # -------------------------------
         last_offer = (
             db.query(Offer)
             .filter(Offer.session_id == session.id)
@@ -108,9 +99,6 @@ def create_message(payload: MessageCreate, db: Session = Depends(get_db)):
             .count()
         )
 
-        # -------------------------------
-        # NEGOTIATION BRAIN
-        # -------------------------------
         brain_input = NegotiationInput(
             cost_price=product.base_price * 0.8,
             ideal_price=product.base_price,
@@ -122,9 +110,6 @@ def create_message(payload: MessageCreate, db: Session = Depends(get_db)):
 
         decision_obj = decide_negotiation(brain_input)
 
-        # -------------------------------
-        # CHAT HISTORY
-        # -------------------------------
         past_messages = (
             db.query(ConversationMessage)
             .filter(ConversationMessage.negotiation_id == session.id)
@@ -134,9 +119,6 @@ def create_message(payload: MessageCreate, db: Session = Depends(get_db)):
 
         chat_history = [(m.sender, m.message) for m in past_messages]
 
-        # -------------------------------
-        # LLM LANGUAGE LAYER
-        # -------------------------------
         ai_text = generate_ai_message(
             decision=decision_obj.decision,
             reasoning={
@@ -148,7 +130,6 @@ def create_message(payload: MessageCreate, db: Session = Depends(get_db)):
             chat_history=chat_history
         )
 
-        # 4️⃣ Save AI message
         ai_message = ConversationMessage(
             negotiation_id=session.id,
             sender="ai",
@@ -156,7 +137,6 @@ def create_message(payload: MessageCreate, db: Session = Depends(get_db)):
         )
         db.add(ai_message)
 
-        # 5️⃣ Persist decision
         if decision_obj.decision == "accept":
             session.status = SessionStatus.completed
             session.final_price = decision_obj.target_price
@@ -175,9 +155,18 @@ def create_message(payload: MessageCreate, db: Session = Depends(get_db)):
             db.add(ai_offer)
 
         db.commit()
-        db.refresh(session)
+        db.refresh(ai_message)
 
-    # 6️⃣ Return CUSTOMER message
+        # ✅ RETURN AI MESSAGE
+        return MessageResponse(
+            id=ai_message.id,
+            session_id=ai_message.negotiation_id,
+            sender=ai_message.sender,
+            message=ai_message.message,
+            created_at=ai_message.created_at
+        )
+
+    # Non-customer fallback
     return MessageResponse(
         id=customer_message.id,
         session_id=customer_message.negotiation_id,
