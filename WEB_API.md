@@ -76,7 +76,7 @@ Put this exact code:
 <body>
 
 <h2>Start Session</h2>
-<input id="name" placeholder="Name" value="Akash">
+<input id="name" placeholder="Name" value="Test">
 <input id="phone" placeholder="Phone" value="9999999999">
 <input id="product" placeholder="Product ID">
 <button onclick="startSession()">Start</button>
