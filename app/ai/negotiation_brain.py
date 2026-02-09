@@ -22,66 +22,59 @@ class NegotiationDecision:
 
 
 def decide_negotiation(input: NegotiationInput) -> NegotiationDecision:
-    """
-    Professional negotiation rules:
 
-    - Never kill a deal just because of time.
-    - Kill only if:
-        * many turns
-        * customer not improving
-        * offer below economic floor
-    """
+    has_price = input.customer_offer is not None
+    has_quantity = input.quantity is not None
 
-    # -------------------------
-    # 1. Dynamic target
-    # -------------------------
+    if not has_price and not has_quantity:
+        return NegotiationDecision("ask_both", None, None, "Missing price and quantity")
+
+    if not has_quantity:
+        return NegotiationDecision("ask_quantity", None, None, "Missing quantity")
+
+    if not has_price:
+        return NegotiationDecision("ask_price", None, None, "Missing price")
+
+    effective_floor = max(input.floor_price, input.cost_price)
+
     if input.last_price:
         target_price = max(input.ideal_price, input.last_price + 20)
     else:
         target_price = input.ideal_price
 
-    # -------------------------
-    # 2. Accept good deal
-    # -------------------------
-    if input.customer_offer >= target_price:
-        return NegotiationDecision(
-            decision="accept",
-            counter_price=None,
-            target_price=target_price,
-            reason="Offer meets or exceeds target"
-        )
+    if input.quantity >= 100:
+        target_price -= 50
+    elif input.quantity >= 50:
+        target_price -= 25
 
-    # -------------------------
-    # 3. Smart rejection rule
-    # -------------------------
-    effective_floor = max(input.floor_price, input.cost_price)
+    if target_price < effective_floor + 100:
+        target_price = effective_floor + 100
+
+    if input.customer_offer >= target_price:
+        return NegotiationDecision("accept", None, target_price, "Good deal")
 
     if (
         input.turn_count >= MAX_TURNS
-        and input.last_price is not None
-        and input.customer_offer <= input.last_price
         and input.customer_offer < effective_floor
     ):
-        return NegotiationDecision(
-            decision="reject",
-            counter_price=None,
-            target_price=target_price,
-            reason="Too many rounds with no improvement and below viable price"
-        )
+        return NegotiationDecision("reject", None, effective_floor, "Below viable price")
 
-    # -------------------------
-    # 4. Counter strategy
-    # -------------------------
     if input.turn_count <= 2:
         counter = target_price
-    elif input.turn_count <= 5:
-        counter = (target_price + effective_floor) / 2
+    elif input.turn_count <= 4:
+        counter = max(
+            (target_price + input.customer_offer) / 2,
+            effective_floor + 50
+        )
     else:
-        counter = effective_floor + 10
+        counter = effective_floor + 30
+
+    if counter < effective_floor:
+        counter = effective_floor
 
     return NegotiationDecision(
-        decision="counter",
-        counter_price=round(counter, 2),
-        target_price=target_price,
-        reason="Negotiation in progress"
+        "counter",
+        round(counter, 2),
+        round(target_price, 2),
+        "Negotiation in progress"
     )

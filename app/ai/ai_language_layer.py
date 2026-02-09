@@ -19,6 +19,7 @@ def generate_ai_message(
     """
 
     is_first_turn = len(chat_history) <= 1
+    base_price = reasoning.get("base_price")
     target_price = reasoning.get("target_price")
     floor_price = reasoning.get("floor_price") or reasoning.get("floor")
 

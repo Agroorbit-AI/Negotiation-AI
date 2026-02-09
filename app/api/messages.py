@@ -122,14 +122,16 @@ def create_message(payload: MessageCreate, db: Session = Depends(get_db)):
         ai_text = generate_ai_message(
             decision=decision_obj.decision,
             reasoning={
+                "base_price": product.base_price,
                 "target_price": decision_obj.counter_price or decision_obj.target_price,
-                "reason": decision_obj.reason
+                "floor_price": product.floor_price,
+                "quantity": quantity
             },
-            psychology={},
+            psychology=["friendly", "persuasive", "indian_sales"],
             product_name=product.name,
             chat_history=chat_history
         )
-
+        
         ai_message = ConversationMessage(
             negotiation_id=session.id,
             sender="ai",
